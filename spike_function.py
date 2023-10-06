@@ -1,3 +1,7 @@
+from _typeshed import Incomplete
+from collections.abc import Callable
+from io import TextIOWrapper
+from os import _Environ
 import pexpect
 import sys
 # log=open("pyspike_log.txt","w")
@@ -13,7 +17,7 @@ import sys
 # log.close()
 class pyspike(pexpect.spawn):
     """
-    实例化请参考spawn类传入shell命令，以及 encoding="utf-8"
+    实例化请参考spawn类传入shell命令
     封装了pexpect库的spawn类，操控spike模拟器
     实现单步调试，扫描寄存器、内存，表达式求值，监视点，difftest功能
     """
@@ -23,6 +27,13 @@ class pyspike(pexpect.spawn):
            's0','s1','s2','s3','s4','s5','s6','s7','s8','s9','s10','s11'])
     watch = []
     watch_last = []
+    def __init__(self, command, args=[], timeout=30, maxread=2000,
+                 searchwindowsize=None, logfile=None, cwd=None, env=None,
+                 ignore_sighup=False, echo=True, preexec_fn=None,
+                 encoding='utf-8', codec_errors='strict', dimensions=None,
+                 use_poll=False) -> None:
+        super().__init__(command, args, timeout, maxread, searchwindowsize, logfile, cwd, env, ignore_sighup, echo, preexec_fn, encoding, codec_errors, dimensions, use_poll)
+        self.reg_get()
     def reg_get(self):
         self.sendline('reg 0 ')
         self.expect(['\n\('])
@@ -52,6 +63,15 @@ class pyspike(pexpect.spawn):
                 return self.reg[reg_name]
         else:
             print('未找到该寄存器：%s'%reg_name)
+    
+    def mem_read(self,mem_addr:int)->int:
+        """
+        读取指定地址内存，请传入内存地址的int类型
+        """
+        x='0x{:0>18X}'.format(mem_addr)
+        self.sendline('mem 0 %s'%x)
+        self.expect(['\n\('])
+        return int(self.before[-19:-1],16)
         
     def run(self,steps:int = 1):
         """
@@ -61,8 +81,8 @@ class pyspike(pexpect.spawn):
             self.sendline('')
             self.expect(['\n\('])
             self.reg_get()
-            print(self.reg)
-            
+            self.watch_check()
+     
     def watch_append(self,watch_name:str = None):
         """
         添加监视点，支持寄存器表达式求值，表达式要求为bool类型
@@ -70,6 +90,7 @@ class pyspike(pexpect.spawn):
         if isinstance(eval(watch_name,{},self.reg),bool):
             self.watch.append(watch_name)
             self.watch_last.append(None)
+            self.watch_check()
         else:
             print('表达式错误，结果需要为bool类型')
             
@@ -92,15 +113,10 @@ class pyspike(pexpect.spawn):
             print('监视点更新!\n'+text)
             return True
         
-w = pyspike('spike -d pk abc',encoding="utf-8")
-w.reg_get()
-w.reg_read('pc')
-w.watch_append('pc-2==4098')
-w.watch_append('pc-2==4098')
-w.watch_check()
-w.watch_check()
+w = pyspike('spike -d pk abc')
+w.watch_append('pc-2==0x1004-2')
 w.run()
-w.watch_check()
+print(w.mem_read(int('0x0000000080000000',16)))
 
 
 
